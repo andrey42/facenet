@@ -70,7 +70,7 @@ def main(args):
      
             # Load the model
             input_map = {'image_batch': image_batch, 'label_batch': label_batch, 'phase_train': phase_train_placeholder}
-            facenet.load_model(args.model, input_map=input_map)
+            facenet.load_model(args.model,input_map=input_map)
 
             # Get output tensor
             embeddings = tf.compat.v1.get_default_graph().get_tensor_by_name("embeddings:0")
