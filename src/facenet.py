@@ -40,6 +40,9 @@ import re
 from tensorflow.python.platform import gfile
 import math
 from six import iteritems
+import matplotlib.pyplot as plt
+import imageio
+from PIL import Image
 
 def triplet_loss(anchor, positive, negative, alpha):
     """Calculate the triplet loss according to the FaceNet paper
@@ -106,20 +109,20 @@ def create_input_pipeline(input_queue, image_size, nrof_preprocess_threads, batc
         filenames, label, control = input_queue.dequeue()
         images = []
         for filename in tf.unstack(filenames):
-            file_contents = tf.read_file(filename)
+            file_contents = tf.compat.v1.read_file(filename)
             image = tf.image.decode_image(file_contents, 3)
             image = tf.cond(get_control_flag(control[0], RANDOM_ROTATE),
-                            lambda:tf.py_func(random_rotate_image, [image], tf.uint8), 
+                            lambda:tf.compat.v1.py_func(random_rotate_image, [image], tf.uint8), 
                             lambda:tf.identity(image))
             image = tf.cond(get_control_flag(control[0], RANDOM_CROP), 
-                            lambda:tf.random_crop(image, image_size + (3,)), 
-                            lambda:tf.image.resize_image_with_crop_or_pad(image, image_size[0], image_size[1]))
+                            lambda:tf.compat.v1.random_crop(image, image_size + (3,)), 
+                            lambda:tf.compat.v1.image.resize_image_with_crop_or_pad(image, image_size[0], image_size[1]))
             image = tf.cond(get_control_flag(control[0], RANDOM_FLIP),
                             lambda:tf.image.random_flip_left_right(image),
                             lambda:tf.identity(image))
             image = tf.cond(get_control_flag(control[0], FIXED_STANDARDIZATION),
                             lambda:(tf.cast(image, tf.float32) - 127.5)/128.0,
-                            lambda:tf.image.per_image_standardization(image))
+                            lambda:tf.dtypes.cast(tf.compat.v1.image.per_image_standardization(image),tf.float32))
             image = tf.cond(get_control_flag(control[0], FLIP),
                             lambda:tf.image.flip_left_right(image),
                             lambda:tf.identity(image))
@@ -128,7 +131,7 @@ def create_input_pipeline(input_queue, image_size, nrof_preprocess_threads, batc
             images.append(image)
         images_and_labels_list.append([images, label])
 
-    image_batch, label_batch = tf.train.batch_join(
+    image_batch, label_batch = tf.compat.v1.train.batch_join(
         images_and_labels_list, batch_size=batch_size_placeholder, 
         shapes=[image_size + (3,), ()], enqueue_many=True,
         capacity=4 * nrof_preprocess_threads * 100,
@@ -137,7 +140,7 @@ def create_input_pipeline(input_queue, image_size, nrof_preprocess_threads, batc
     return image_batch, label_batch
 
 def get_control_flag(control, field):
-    return tf.equal(tf.mod(tf.floor_div(control, field), 2), 1)
+    return tf.equal(tf.compat.v1.mod(tf.compat.v1.floor_div(control, field), 2), 1)
   
 def _add_loss_summaries(total_loss):
     """Add summaries for losses.
@@ -244,7 +247,7 @@ def load_data(image_paths, do_random_crop, do_random_flip, image_size, do_prewhi
     nrof_samples = len(image_paths)
     images = np.zeros((nrof_samples, image_size, image_size, 3))
     for i in range(nrof_samples):
-        img = misc.imread(image_paths[i])
+        img = plt.imread(image_paths[i])
         if img.ndim == 2:
             img = to_rgb(img)
         if do_prewhiten:
@@ -368,7 +371,7 @@ def load_model(model, input_map=None):
     if (os.path.isfile(model_exp)):
         print('Model filename: %s' % model_exp)
         with gfile.FastGFile(model_exp,'rb') as f:
-            graph_def = tf.GraphDef()
+            graph_def = tf.compat.v1.GraphDef()
             graph_def.ParseFromString(f.read())
             tf.import_graph_def(graph_def, input_map=input_map, name='')
     else:
@@ -378,8 +381,9 @@ def load_model(model, input_map=None):
         print('Metagraph file: %s' % meta_file)
         print('Checkpoint file: %s' % ckpt_file)
       
-        saver = tf.train.import_meta_graph(os.path.join(model_exp, meta_file), input_map=input_map)
-        saver.restore(tf.get_default_session(), os.path.join(model_exp, ckpt_file))
+        #saver = tf.compat.v1.train.import_meta_graph(os.path.join(model_exp, meta_file), input_map=input_map)
+        saver = tf.compat.v1.train.import_meta_graph(os.path.join(model_exp, meta_file))
+        saver.restore(tf.compat.v1.get_default_session(), os.path.join(model_exp, ckpt_file))
     
 def get_model_filenames(model_dir):
     files = os.listdir(model_dir)
